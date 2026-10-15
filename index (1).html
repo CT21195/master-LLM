@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MasterLLM — use any AI with your own API key</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background: #0f1420; color: #e8ecf4; margin: 0; padding: 0; }
+  header { background: #171e30; padding: 16px 20px; border-bottom: 1px solid #2a3350; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; color: #9aa5c0; font-size: 13px; }
+  .tabs { display: flex; gap: 8px; padding: 12px 20px 0; }
+  .tab { padding: 10px 18px; border: 1px solid #2a3350; border-bottom: none; background: #131a2c; color: #9aa5c0; cursor: pointer; border-radius: 8px 8px 0 0; font-size: 14px; }
+  .tab.active { background: #1c2540; color: #fff; font-weight: 600; }
+  .panel { display: none; padding: 16px 20px 40px; max-width: 1100px; }
+  .panel.active { display: block; }
+  .card { background: #171e30; border: 1px solid #2a3350; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .card h3 { margin: 0 0 10px; font-size: 15px; }
+  label { display: block; font-size: 12px; color: #9aa5c0; margin: 8px 0 4px; }
+  select, input[type=text], input[type=password], input[type=number], textarea { width: 100%; padding: 9px 10px; border-radius: 7px; border: 1px solid #2a3350; background: #0f1420; color: #e8ecf4; font-size: 14px; }
+  textarea { min-height: 80px; resize: vertical; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 160px; }
+  button { background: #3b6cff; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-size: 14px; cursor: pointer; margin-top: 10px; }
+  button:hover { background: #2f5bef; }
+  button.secondary { background: #2a3350; }
+  button:disabled { opacity: .5; cursor: wait; }
+  .keylink { font-size: 12px; color: #7ea2ff; }
+  .chatlog { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; max-height: 55vh; overflow-y: auto; }
+  .msg { padding: 10px 12px; border-radius: 9px; white-space: pre-wrap; word-wrap: break-word; font-size: 14px; line-height: 1.5; }
+  .msg.user { background: #24406e; align-self: flex-end; max-width: 85%; }
+  .msg.ai { background: #1c2540; align-self: flex-start; max-width: 95%; }
+  .msg.err { background: #4a1f1f; color: #ffb4b4; align-self: flex-start; max-width: 95%; }
+  .msg .who { font-size: 11px; color: #9aa5c0; display: block; margin-bottom: 4px; }
+  .cols { display: flex; gap: 12px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 260px; }
+  .answer { background: #1c2540; border-radius: 9px; padding: 10px 12px; min-height: 120px; white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; }
+  .step { font-size: 13px; color: #9aa5c0; margin: 6px 0; }
+  .step.done { color: #7ee2a8; }
+  .note { font-size: 12px; color: #9aa5c0; margin-top: 10px; }
+  code { background: #0f1420; padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧠 MasterLLM</h1>
+  <p>One page, five ways to use AI. Your API keys stay in <b>your</b> browser — they are never sent anywhere except the AI provider you choose. You pay the provider directly for what you use.</p>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="chat">💬 Chat</div>
+  <div class="tab" data-tab="compare">⚖️ Compare models</div>
+  <div class="tab" data-tab="team">👥 Team (boss + workers)</div>
+  <div class="tab" data-tab="agent">🤖 Agent (uses tools)</div>
+  <div class="tab" data-tab="best">🏆 Best answer</div>
+</div>
+
+<!-- ============ CHAT ============ -->
+<div class="panel active" id="panel-chat">
+  <div class="card">
+    <h3>Your setup</h3>
+    <div class="row">
+      <div><label>AI provider</label><select id="chat-provider"></select><div><a class="keylink" id="chat-keylink" href="#" target="_blank">Where do I get a key?</a></div></div>
+      <div><label>Model name</label><input type="text" id="chat-model"></div>
+      <div><label>Your API key</label><input type="password" id="chat-key" autocomplete="off" placeholder="paste key here"></div>
+    </div>
+    <div class="row" id="chat-customrow" style="display:none"><div><label>Custom base URL (for Custom provider)</label><input type="text" id="chat-custombase" placeholder="https://..."></div></div>
+    <p class="note">Tip: want Claude here? Pick <b>OpenRouter</b> as the provider and use a Claude model name like <code>anthropic/claude-sonnet-4</code>. Anthropic's own API blocks browser pages, but OpenRouter lets you reach Claude with one key.</p>
+  </div>
+  <div class="card">
+    <h3>Conversation</h3>
+    <div class="chatlog" id="chat-log"></div>
+    <label>Message</label>
+    <textarea id="chat-input" placeholder="Ask anything…"></textarea>
+    <button id="chat-send">Send</button>
+    <button class="secondary" id="chat-clear">Clear chat</button>
+  </div>
+</div>
+
+<!-- ============ COMPARE ============ -->
+<div class="panel" id="panel-compare">
+  <div class="card">
+    <h3>Your question — answered by up to 3 models at once</h3>
+    <div class="cols" id="cmp-slots"></div>
+    <label>Prompt</label>
+    <textarea id="cmp-prompt" placeholder="Ask one question, get several answers side by side…"></textarea>
+    <button id="cmp-run">Ask all models</button>
+    <p class="note">Each column bills the API key entered in that column. Leave a column's prompt-side key empty to skip it.</p>
+  </div>
+</div>
+
+<!-- ============ TEAM ============ -->
+<div class="panel" id="panel-team">
+  <div class="card">
+    <h3>Boss model (plans the work)</h3>
+    <div class="row">
+      <div><label>Provider</label><select id="team-boss-provider"></select></div>
+      <div><label>Model</label><input type="text" id="team-boss-model"></div>
+      <div><label>API key</label><input type="password" id="team-boss-key" autocomplete="off"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Worker models (do the pieces)</h3>
+    <div class="row">
+      <div><label>How many workers?</label><select id="team-n"><option value="2">2</option><option value="3" selected>3</option></select></div>
+    </div>
+    <div id="team-workers"></div>
+  </div>
+  <div class="card">
+    <h3>Task</h3>
+    <label>Describe the job for the team</label>
+    <textarea id="team-task" placeholder="e.g. Research the best budget robot vacuums under $300, compare the top 3, and write a 200-word buying recommendation…"></textarea>
+    <button id="team-run">Run the team</button>
+    <div id="team-progress"></div>
+    <div id="team-results"></div>
+  </div>
+</div>
+
+<!-- ============ AGENT ============ -->
+<div class="panel" id="panel-agent">
+  <div class="card">
+    <h3>Agent brain</h3>
+    <div class="row">
+      <div><label>AI provider</label><select id="agent-provider"></select></div>
+      <div><label>Model name</label><input type="text" id="agent-model"></div>
+      <div><label>Your API key</label><input type="password" id="agent-key" autocomplete="off" placeholder="paste key here"></div>
+    </div>
+    <p class="note">Tools the agent can call: <code>github_search</code> — searches GitHub repos, free, no key needed · <code>fetch_url</code> — reads any web page as text, free · <code>web_search</code> — live web search, needs your Perplexity key (add it once on the Chat tab).</p>
+  </div>
+  <div class="card">
+    <h3>Task for the agent</h3>
+    <label>Describe the job — the agent will search, read pages, and reason step by step</label>
+    <textarea id="agent-task" placeholder="e.g. Find the most-starred open-source ElizaOS plugins on GitHub, read the top result's README, and tell me what it does…"></textarea>
+    <button id="agent-run">Run agent</button>
+    <div class="chatlog" id="agent-log" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<!-- ============ BEST ANSWER ============ -->
+<div class="panel" id="panel-best">
+  <div class="card">
+    <h3>Contestants — 3 models answer your prompt</h3>
+    <div class="cols" id="best-slots"></div>
+  </div>
+  <div class="card">
+    <h3>Judge — picks the best answer</h3>
+    <div class="row">
+      <div><label>Provider</label><select id="best-judge-prov"></select></div>
+      <div><label>Model</label><input type="text" id="best-judge-model"></div>
+      <div><label>API key</label><input type="password" id="best-judge-key" autocomplete="off" placeholder="paste key here"></div>
+    </div>
+    <p class="note">Use your strongest model as the judge. It reads all three answers and picks the winner.</p>
+  </div>
+  <div class="card">
+    <h3>Prompt</h3>
+    <textarea id="best-prompt" placeholder="Ask one question — three models answer, the judge picks the best…"></textarea>
+    <button id="best-run">Get best answer</button>
+    <p class="note">This uses 4 model calls per question (3 answers + 1 judge), so it costs roughly 4× a single chat message.</p>
+    <div id="best-result" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<script>
+// ---------- providers ----------
+const PROVIDERS = {
+  openai:     { name:'OpenAI',            base:'https://api.openai.com/v1',                       type:'oai',    keyUrl:'https://platform.openai.com/api-keys',            defModel:'gpt-4o-mini' },
+  gemini:     { name:'Google Gemini',     base:'https://generativelanguage.googleapis.com/v1beta', type:'gemini', keyUrl:'https://aistudio.google.com/apikey',             defModel:'gemini-2.0-flash' },
+  perplexity: { name:'Perplexity',        base:'https://api.perplexity.ai',                        type:'oai',    keyUrl:'https://www.perplexity.ai/settings/api',         defModel:'sonar' },
+  openrouter: { name:'OpenRouter (incl. Claude, 300+ models)', base:'https://openrouter.ai/api/v1', type:'oai', keyUrl:'https://openrouter.ai/keys', defModel:'anthropic/claude-sonnet-4', referer:true },
+  groq:       { name:'Groq',              base:'https://api.groq.com/openai/v1',                   type:'oai',    keyUrl:'https://console.groq.com/keys',                 defModel:'llama-3.3-70b-versatile' },
+  deepseek:   { name:'DeepSeek',          base:'https://api.deepseek.com',                         type:'oai',    keyUrl:'https://platform.deepseek.com/api_keys',        defModel:'deepseek-chat' },
+  xai:        { name:'xAI (Grok)',        base:'https://api.x.ai/v1',                              type:'oai',    keyUrl:'https://console.x.ai',                          defModel:'grok-3-mini' },
+  together:   { name:'Together AI',       base:'https://api.together.xyz/v1',                      type:'oai',    keyUrl:'https://api.together.xyz/settings/api-keys',    defModel:'meta-llama/Llama-3.3-70B-Instruct-Turbo' },
+  custom:     { name:'Custom (any OpenAI-compatible API)', base:'',                               type:'oai',    keyUrl:'',                                              defModel:'' },
+};
+
+// ---------- saved keys (localStorage, this browser only) ----------
+function loadKeys(){ try { return JSON.parse(localStorage.getItem('masterllm_keys')||'{}'); } catch(e){ return {}; } }
+function saveKey(pid, key){ if(!key) return; const k=loadKeys(); k[pid]=key; localStorage.setItem('masterllm_keys', JSON.stringify(k)); }
+function getKey(pid){ return loadKeys()[pid]||''; }
+
+// ---------- low-level call ----------
+async function callLLM(pid, key, model, messages, customBase){
+  const p = PROVIDERS[pid];
+  const base = pid==='custom' ? (customBase||'').replace(/\/+$/,'') : p.base;
+  if (p.type==='gemini'){
+    const sys = messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');
+    const contents = messages.filter(m=>m.role!=='system').map(m=>({ role: m.role==='assistant'?'model':'user', parts:[{text:m.content}] }));
+    const body = { contents };
+    if (sys) body.systemInstruction = { parts:[{text:sys}] };
+    const res = await fetch(base + '/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key), {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error('Gemini error ' + res.status + ': ' + (data.error&&data.error.message||JSON.stringify(data)).slice(0,300));
+    return (data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts||[]).map(x=>x.text||'').join('');
+  } else {
+    const headers = { 'Content-Type':'application/json', 'Authorization':'Bearer '+key };
+    if (p.referer){ headers['HTTP-Referer'] = location.href; headers['X-Title'] = 'MasterLLM'; }
+    const res = await fetch(base + '/chat/completions', {
+      method:'POST', headers, body: JSON.stringify({ model, messages }) });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok){ const em = (data.error&&(data.error.message||data.error.code))||JSON.stringify(data); throw new Error(p.name+' error '+res.status+': '+String(em).slice(0,300)); }
+    return data.choices&&data.choices[0]&&data.choices[0].message ? data.choices[0].message.content||'' : '';
+  }
+}
+
+// ---------- tabs ----------
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+}));
+
+function fillProviderSelect(sel, saved){
+  sel.innerHTML='';
+  Object.keys(PROVIDERS).forEach(pid=>{ const o=document.createElement('option'); o.value=pid; o.textContent=PROVIDERS[pid].name; sel.appendChild(o); });
+  if (saved && PROVIDERS[saved]) sel.value=saved;
+}
+
+// ---------- CHAT ----------
+const chatProv=document.getElementById('chat-provider'), chatModel=document.getElementById('chat-model'),
+      chatKey=document.getElementById('chat-key'), chatKeyLink=document.getElementById('chat-keylink'),
+      chatCustomRow=document.getElementById('chat-customrow'), chatCustomBase=document.getElementById('chat-custombase');
+fillProviderSelect(chatProv,'openai');
+function chatProvChanged(){
+  const p=PROVIDERS[chatProv.value];
+  chatModel.value=p.defModel; chatKey.value=getKey(chatProv.value);
+  chatKeyLink.href=p.keyUrl||'#'; chatKeyLink.style.display=p.keyUrl?'':'none';
+  chatCustomRow.style.display=chatProv.value==='custom'?'':'none';
+}
+chatProv.addEventListener('change',chatProvChanged); chatProvChanged();
+chatKey.addEventListener('change',()=>saveKey(chatProv.value,chatKey.value.trim()));
+const chatLog=document.getElementById('chat-log'), chatInput=document.getElementById('chat-input');
+let chatHistory=[];
+function addMsg(who, text, cls){
+  const d=document.createElement('div'); d.className='msg '+(cls||'ai');
+  d.innerHTML='<span class="who"></span>';
+  d.querySelector('.who').textContent=who; d.appendChild(document.createTextNode(text));
+  chatLog.appendChild(d); chatLog.scrollTop=chatLog.scrollHeight; return d;
+}
+document.getElementById('chat-send').addEventListener('click', async ()=>{
+  const text=chatInput.value.trim(); if(!text) return;
+  const pid=chatProv.value, key=chatKey.value.trim(), model=chatModel.value.trim();
+  if(!key||!model){ addMsg('System','Enter your API key and a model name first.','err'); return; }
+  saveKey(pid,key);
+  addMsg('You',text,'user'); chatHistory.push({role:'user',content:text}); chatInput.value='';
+  const btn=document.getElementById('chat-send'); btn.disabled=true;
+  const thinking=addMsg(PROVIDERS[pid].name+' · '+model,'…');
+  try{
+    const reply=await callLLM(pid,key,model,chatHistory,chatCustomBase.value.trim());
+    thinking.querySelector('.who').textContent=PROVIDERS[pid].name+' · '+model;
+    thinking.childNodes[1].textContent=reply;
+    chatHistory.push({role:'assistant',content:reply});
+  }catch(e){ thinking.className='msg err'; thinking.childNodes[1].textContent=String(e.message||e); }
+  btn.disabled=false;
+});
+document.getElementById('chat-clear').addEventListener('click',()=>{ chatHistory=[]; chatLog.innerHTML=''; });
+chatInput.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); document.getElementById('chat-send').click(); } });
+
+// ---------- COMPARE ----------
+const cmpSlots=document.getElementById('cmp-slots');
+function addCompareSlot(i){
+  const d=document.createElement('div'); d.className='col card';
+  d.innerHTML='<h3>Model '+(i+1)+'</h3>'
+    +'<label>Provider</label><select class="c-prov"></select>'
+    +'<label>Model</label><input type="text" class="c-model">'
+    +'<label>API key</label><input type="password" class="c-key" autocomplete="off">'
+    +'<div class="answer" style="margin-top:10px"><span class="step">answer appears here</span></div>';
+  const sel=d.querySelector('.c-prov'); fillProviderSelect(sel,['openai','gemini','openrouter'][i]);
+  const upd=()=>{ d.querySelector('.c-model').value=PROVIDERS[sel.value].defModel; d.querySelector('.c-key').value=getKey(sel.value); };
+  sel.addEventListener('change',upd); upd();
+  cmpSlots.appendChild(d); return d;
+}
+const slotEls=[addCompareSlot(0),addCompareSlot(1),addCompareSlot(2)];
+document.getElementById('cmp-run').addEventListener('click', async ()=>{
+  const prompt=document.getElementById('cmp-prompt').value.trim(); if(!prompt) return;
+  const btn=document.getElementById('cmp-run'); btn.disabled=true;
+  await Promise.all(slotEls.map(async s=>{
+    const pid=s.querySelector('.c-prov').value, model=s.querySelector('.c-model').value.trim(),
+          key=s.querySelector('.c-key').value.trim(), box=s.querySelector('.answer');
+    if(!key||!model){ box.innerHTML='<span class="step">skipped — no key/model</span>'; return; }
+    saveKey(pid,key); box.innerHTML='<span class="step">thinking…</span>';
+    try{ const r=await callLLM(pid,key,model,[{role:'user',content:prompt}]); box.textContent=r||'(empty reply)'; }
+    catch(e){ box.innerHTML='<span class="step" style="color:#ffb4b4">'+String(e.message||e).slice(0,400)+'</span>'; }
+  }));
+  btn.disabled=false;
+});
+
+// ---------- TEAM ----------
+const bossProv=document.getElementById('team-boss-provider'), bossModel=document.getElementById('team-boss-model'), bossKey=document.getElementById('team-boss-key');
+fillProviderSelect(bossProv,'openai');
+bossProv.addEventListener('change',()=>{ bossModel.value=PROVIDERS[bossProv.value].defModel; bossKey.value=getKey(bossProv.value); });
+bossModel.value=PROVIDERS[bossProv.value].defModel; bossKey.value=getKey('openai');
+const teamWorkers=document.getElementById('team-workers'), teamN=document.getElementById('team-n');
+function buildWorkers(){
+  teamWorkers.innerHTML='';
+  const n=parseInt(teamN.value,10);
+  for(let i=0;i<n;i++){
+    const d=document.createElement('div'); d.className='card';
+    d.innerHTML='<h3>Worker '+(i+1)+'</h3><div class="row">'
+      +'<div><label>Provider</label><select class="w-prov"></select></div>'
+      +'<div><label>Model</label><input type="text" class="w-model"></div>'
+      +'<div><label>API key</label><input type="password" class="w-key" autocomplete="off"></div></div>';
+    const sel=d.querySelector('.w-prov'); fillProviderSelect(sel,['gemini','groq','deepseek'][i%3]);
+    const upd=()=>{ d.querySelector('.w-model').value=PROVIDERS[sel.value].defModel; d.querySelector('.w-key').value=getKey(sel.value); };
+    sel.addEventListener('change',upd); upd();
+    teamWorkers.appendChild(d);
+  }
+}
+teamN.addEventListener('change',buildWorkers); buildWorkers();
+function parseSubtasks(text,n){
+  const a=text.indexOf('['), b=text.lastIndexOf(']');
+  if(a>=0&&b>a){ try{ const j=JSON.parse(text.slice(a,b+1)); if(Array.isArray(j)&&j.length) return j.map(String).slice(0,n); }catch(e){} }
+  return text.split('\n').map(s=>s.replace(/^[\d\-\*\.\s]+/,'').trim()).filter(s=>s.length>4).slice(0,n);
+}
+document.getElementById('team-run').addEventListener('click', async ()=>{
+  const task=document.getElementById('team-task').value.trim(); if(!task) return;
+  const bPid=bossProv.value, bKey=bossKey.value.trim(), bModel=bossModel.value.trim();
+  if(!bKey||!bModel){ document.getElementById('team-progress').innerHTML='<div class="step" style="color:#ffb4b4">Boss needs an API key and model.</div>'; return; }
+  saveKey(bPid,bKey);
+  const wEls=[...teamWorkers.children].map(d=>({pid:d.querySelector('.w-prov').value, model:d.querySelector('.w-model').value.trim(), key:d.querySelector('.w-key').value.trim()}))
+    .filter(w=>w.key&&w.model);
+  if(!wEls.length){ document.getElementById('team-progress').innerHTML='<div class="step" style="color:#ffb4b4">Give at least one worker an API key and model.</div>'; return; }
+  wEls.forEach(w=>saveKey(w.pid,w.key));
+  const btn=document.getElementById('team-run'); btn.disabled=true;
+  const prog=document.getElementById('team-progress'), res=document.getElementById('team-results');
+  prog.innerHTML=''; res.innerHTML='';
+  const step=t=>{ const d=document.createElement('div'); d.className='step'; d.textContent=t; prog.appendChild(d); return d; };
+  try{
+    const s1=step('1/4 Boss is breaking the task into '+wEls.length+' pieces…');
+    const plan=await callLLM(bPid,bKey,bModel,[
+      {role:'system',content:'You are a task coordinator. Break tasks into independent subtasks. Reply with ONLY a JSON array of strings, no other text.'},
+      {role:'user',content:'Break this task into exactly '+wEls.length+' independent subtasks. Reply with ONLY a JSON array of strings.\n\nTask: '+task}], '');
+    const subs=parseSubtasks(plan,wEls.length);
+    while(subs.length<wEls.length) subs.push('Help complete the task: '+task);
+    s1.classList.add('done'); s1.textContent='1/4 Boss split the task into '+subs.length+' pieces ✓';
+    const s2=step('2/4 Workers are doing their pieces…');
+    const answers=await Promise.all(wEls.map((w,i)=>callLLM(w.pid,w.key,w.model,[
+      {role:'system',content:'You are a specialist AI. Complete the subtask below thoroughly. Return only the result.'},
+      {role:'user',content:'Subtask '+(i+1)+' of '+subs.length+': '+subs[i]}], '').catch(e=>'Worker '+(i+1)+' failed: '+e.message)));
+    s2.classList.add('done'); s2.textContent='2/4 All workers finished ✓';
+    const s3=step('3/4 Boss is combining everything…');
+    const combined=answers.map((a,i)=>'--- Piece '+(i+1)+' ('+subs[i]+') ---\n'+a).join('\n\n');
+    const final=await callLLM(bPid,bKey,bModel,[
+      {role:'system',content:'You are a task coordinator. Combine specialist results into one clear, complete final answer.'},
+      {role:'user',content:'Original task: '+task+'\n\nSpecialist results:\n'+combined}], '');
+    s3.classList.add('done'); s3.textContent='3/4 Combined ✓';
+    step('4/4 Done ✓').classList.add('done');
+    subs.forEach((s,i)=>{ const d=document.createElement('div'); d.className='card'; d.innerHTML='<h3>Piece '+(i+1)+': '+s.slice(0,80)+'</h3><div class="answer"></div>'; d.querySelector('.answer').textContent=answers[i]; res.appendChild(d); });
+    const fd=document.createElement('div'); fd.className='card'; fd.innerHTML='<h3>⭐ Final combined answer</h3><div class="answer"></div>'; fd.querySelector('.answer').textContent=final; res.appendChild(fd);
+  }catch(e){ const d=document.createElement('div'); d.className='step'; d.style.color='#ffb4b4'; d.textContent='Failed: '+e.message; prog.appendChild(d); }
+  btn.disabled=false;
+});
+
+// ---------- AGENT (tool-using loop, works with any provider) ----------
+const agentProv=document.getElementById('agent-provider'), agentModel=document.getElementById('agent-model'), agentKey=document.getElementById('agent-key');
+fillProviderSelect(agentProv,'openai');
+agentProv.addEventListener('change',()=>{ agentModel.value=PROVIDERS[agentProv.value].defModel; agentKey.value=getKey(agentProv.value); });
+agentModel.value=PROVIDERS[agentProv.value].defModel; agentKey.value=getKey('openai');
+agentKey.addEventListener('change',()=>saveKey(agentProv.value,agentKey.value.trim()));
+
+const AGENT_SYS = 'You are an AI agent that can use tools to find real information. When you need facts, code, prices, or current data, emit a tool call on its own line in EXACTLY this format:\n'
+  + '[TOOL: github_search | search words]\n'
+  + '[TOOL: fetch_url | https://example.com/page]\n'
+  + '[TOOL: web_search | search words]\n'
+  + 'Rules:\n'
+  + '- github_search searches GitHub repositories (free). fetch_url reads any web page as text (free). web_search does a live web search (needs a Perplexity key saved in this app).\n'
+  + '- You may use tools across up to 6 steps. After each tool result, keep reasoning and call more tools if needed.\n'
+  + '- When you have what you need, write your FINAL answer with no [TOOL: ...] line.\n'
+  + '- Be concise. Include the URLs you actually used.';
+
+function agentLog(who, text, cls){
+  const log=document.getElementById('agent-log');
+  const d=document.createElement('div'); d.className='msg '+(cls||'ai');
+  d.innerHTML='<span class="who"></span>';
+  d.querySelector('.who').textContent=who; d.appendChild(document.createTextNode(text));
+  log.appendChild(d); log.scrollTop=log.scrollHeight; return d;
+}
+
+async function execTool(name, arg){
+  name=name.toLowerCase().trim();
+  if(name==='github_search'){
+    const r=await fetch('https://api.github.com/search/repositories?q='+encodeURIComponent(arg)+'&per_page=5&sort=stars&order=desc');
+    if(!r.ok) return 'GitHub search failed: HTTP '+r.status;
+    const d=await r.json();
+    if(!d.items||!d.items.length) return 'No repos found for: '+arg;
+    return d.items.map(x=>x.full_name+' ★'+x.stargazers_count+'\n'+(x.description||'(no description)')+'\n'+x.html_url).join('\n\n');
+  }
+  if(name==='fetch_url'){
+    const r=await fetch('https://r.jina.ai/'+arg);
+    if(!r.ok) return 'Page fetch failed: HTTP '+r.status;
+    const t=await r.text();
+    return (t||'(empty page)').slice(0,4000);
+  }
+  if(name==='web_search'){
+    const pk=getKey('perplexity');
+    if(!pk) return 'web_search needs a Perplexity API key. Add one on the Chat tab (provider: Perplexity), then run the agent again.';
+    const res=await fetch('https://api.perplexity.ai/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+pk},body:JSON.stringify({model:'sonar',messages:[{role:'user',content:arg}]})});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) return 'Web search failed: HTTP '+res.status;
+    return ((data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content)||'(no result)').slice(0,4000);
+  }
+  return 'Unknown tool: '+name+' (available: github_search, fetch_url, web_search)';
+}
+
+document.getElementById('agent-run').addEventListener('click', async ()=>{
+  const task=document.getElementById('agent-task').value.trim(); if(!task) return;
+  const pid=agentProv.value, key=agentKey.value.trim(), model=agentModel.value.trim();
+  if(!key||!model){ agentLog('System','Enter your API key and a model name first.','err'); return; }
+  saveKey(pid,key);
+  const btn=document.getElementById('agent-run'); btn.disabled=true;
+  document.getElementById('agent-log').innerHTML='';
+  agentLog('You',task,'user');
+  const hist=[{role:'system',content:AGENT_SYS},{role:'user',content:task}];
+  let done=false;
+  try{
+    for(let step=1; step<=6 && !done; step++){
+      const thinking=agentLog(PROVIDERS[pid].name+' · step '+step,'thinking…');
+      const reply=await callLLM(pid,key,model,hist);
+      hist.push({role:'assistant',content:reply});
+      thinking.childNodes[1].textContent=reply.length>700?reply.slice(0,700)+'…':reply;
+      const tools=[...reply.matchAll(/\[TOOL:\s*([\w-]+)\s*\|\s*([^\]]+)\]/g)];
+      if(!tools.length){ agentLog('⭐ Final answer',reply); done=true; break; }
+      for(const t of tools){
+        const tname=t[1], targ=t[2].trim();
+        agentLog('🔧 tool: '+tname,'query: '+targ);
+        const res=await execTool(tname,targ);
+        agentLog('🔧 result',res.length>900?res.slice(0,900)+'…':res);
+        hist.push({role:'user',content:'Tool result ['+tname+' | '+targ+']:\n'+res.slice(0,4000)});
+      }
+    }
+    if(!done) agentLog('System','Stopped after 6 tool steps without a final answer.','err');
+  }catch(e){ agentLog('System','Failed: '+(e.message||e),'err'); }
+  btn.disabled=false;
+});
+
+// ---------- BEST ANSWER (3 models compete, judge picks winner) ----------
+const bestSlotsEl=document.getElementById('best-slots');
+function addBestSlot(i){
+  const d=document.createElement('div'); d.className='col card';
+  d.innerHTML='<h3>Model '+(i+1)+'</h3>'
+    +'<label>Provider</label><select class="b-prov"></select>'
+    +'<label>Model</label><input type="text" class="b-model">'
+    +'<label>API key</label><input type="password" class="b-key" autocomplete="off">';
+  const sel=d.querySelector('.b-prov'); fillProviderSelect(sel,['openai','gemini','openrouter'][i]);
+  const upd=()=>{ d.querySelector('.b-model').value=PROVIDERS[sel.value].defModel; d.querySelector('.b-key').value=getKey(sel.value); };
+  sel.addEventListener('change',upd); upd();
+  bestSlotsEl.appendChild(d); return d;
+}
+const bSlots=[addBestSlot(0),addBestSlot(1),addBestSlot(2)];
+const jProv=document.getElementById('best-judge-prov'), jModel=document.getElementById('best-judge-model'), jKey=document.getElementById('best-judge-key');
+fillProviderSelect(jProv,'openai');
+jProv.addEventListener('change',()=>{ jModel.value=PROVIDERS[jProv.value].defModel; jKey.value=getKey(jProv.value); });
+jModel.value='gpt-4o'; jKey.value=getKey('openai');
+jKey.addEventListener('change',()=>saveKey(jProv.value,jKey.value.trim()));
+
+document.getElementById('best-run').addEventListener('click', async ()=>{
+  const prompt=document.getElementById('best-prompt').value.trim(); if(!prompt) return;
+  const btn=document.getElementById('best-run'); btn.disabled=true;
+  const out=document.getElementById('best-result'); out.innerHTML='<div class="step">Getting answers from all three models…</div>';
+  try{
+    const contestants=[];
+    for(const s of bSlots){
+      const pid=s.querySelector('.b-prov').value, model=s.querySelector('.b-model').value.trim(), key=s.querySelector('.b-key').value.trim();
+      if(key&&model){ saveKey(pid,key); contestants.push({pid,model,key,label:PROVIDERS[pid].name+' · '+model}); }
+    }
+    if(!contestants.length) throw new Error('Give at least one model an API key.');
+    const jpid=jProv.value, jkey=jKey.value.trim(), jmodel=jModel.value.trim();
+    if(!jkey||!jmodel) throw new Error('The judge needs an API key and model too.');
+    saveKey(jpid,jkey);
+    const answers=await Promise.all(contestants.map(async c=>{
+      try{ return {c, text: await callLLM(c.pid,c.key,c.model,[{role:'user',content:prompt}])}; }
+      catch(e){ return {c, text:'[ERROR: '+e.message+']'}; }
+    }));
+    out.innerHTML='<div class="step">Judge is reading the answers…</div>';
+    const numbered=answers.map((a,i)=>'--- Answer '+(i+1)+' ('+a.c.label+') ---\n'+a.text).join('\n\n');
+    const verdict=await callLLM(jpid,jkey,jmodel,[
+      {role:'system',content:'You are a fair judge of AI answers. Pick the single best answer by accuracy, completeness, and clarity. Ignore answers that are errors.'},
+      {role:'user',content:'The user asked: '+prompt+'\n\nHere are the answers:\n\n'+numbered+'\n\nReply in EXACTLY this format:\nWINNER: <number 1-'+answers.length+'>\nREASON: <one sentence explaining why it won>'}]);
+    const m=verdict.match(/WINNER:\s*(\d+)/);
+    const wi=m?Math.min(Math.max(parseInt(m[1],10)-1,0),answers.length-1):0;
+    const reason=(verdict.match(/REASON:\s*(.+)/)||[])[1]||'';
+    const win=answers[wi];
+    out.innerHTML='';
+    const hd=document.createElement('div'); hd.className='card';
+    hd.innerHTML='<h3>🏆 Winner: '+win.c.label+'</h3><div class="step done">Judge ('+PROVIDERS[jpid].name+' · '+jmodel+'): '+reason+'</div><div class="answer"></div>';
+    hd.querySelector('.answer').textContent=win.text;
+    out.appendChild(hd);
+    answers.forEach((a,i)=>{
+      if(i===wi) return;
+      const d=document.createElement('div'); d.className='card';
+      d.innerHTML='<h3>Runner-up '+(i+1)+': '+a.c.label+'</h3><div class="answer"></div>';
+      d.querySelector('.answer').textContent=a.text.length>1200?a.text.slice(0,1200)+'…':a.text;
+      out.appendChild(d);
+    });
+  }catch(e){ out.innerHTML='<div class="step" style="color:#ffb4b4">Failed: '+String(e.message||e).slice(0,300)+'</div>'; }
+  btn.disabled=false;
+});
+</script>
+</body>
+</html>
